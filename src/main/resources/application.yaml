@@ -1,0 +1,44 @@
+spring:
+  application:
+    name: secure-market
+  config:
+    import: optional:configtree:/run/secrets/
+  datasource:
+    url: ${DATABASE_URL:jdbc:postgresql://localhost:5432/secure_market}
+    username: ${DATABASE_USERNAME:secure_market}
+    password: ${database_password:${DATABASE_PASSWORD:}}
+  jpa:
+    open-in-view: false
+    hibernate:
+      ddl-auto: validate
+  data:
+    redis:
+      host: ${REDIS_HOST:localhost}
+      port: ${REDIS_PORT:6379}
+      password: ${redis_password:${REDIS_PASSWORD:}}
+  cache:
+    type: redis
+    redis:
+      time-to-live: 10m
+      cache-null-values: false
+      use-key-prefix: true
+
+security:
+  jwt:
+    secret: ${jwt_secret:${JWT_SECRET}}
+    access-token-ttl: 15m
+    issuer: secure-market
+
+payment:
+  simulation:
+    success-rate: ${PAYMENT_SUCCESS_RATE:0.80}
+
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health, info, metrics
+  endpoint:
+    health:
+      show-details: always
+

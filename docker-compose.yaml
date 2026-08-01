@@ -1,0 +1,88 @@
+name: ${COMPOSE_PROJECT_NAME:-secure-market}
+
+services:
+  postgres:
+    image: postgres:18
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB}
+      POSTGRES_USER: ${POSTGRES_USER}
+      POSTGRES_PASSWORD_FILE: /run/secrets/database_password
+    secrets:
+      - database_password
+    ports:
+      - "${POSTGRES_PORT:-5432}:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U $${POSTGRES_USER} -d $${POSTGRES_DB}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
+
+  redis:
+    image: redis:7.4-alpine
+    restart: unless-stopped
+    command:
+      - /bin/sh
+      - -c
+      - exec redis-server --appendonly yes --requirepass "$$(cat /run/secrets/redis_password)"
+    secrets:
+      - redis_password
+    ports:
+      - "${REDIS_PORT:-6379}:6379"
+    volumes:
+      - redis_data:/data
+    healthcheck:
+      test: ["CMD-SHELL", "redis-cli --no-auth-warning -a \"$$(cat /run/secrets/redis_password)\" ping | grep PONG"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 5s
+
+  application:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    restart: unless-stopped
+    environment:
+      DATABASE_URL: jdbc:postgresql://postgres:5432/${POSTGRES_DB}
+      DATABASE_USERNAME: ${POSTGRES_USER}
+      REDIS_HOST: redis
+      REDIS_PORT: 6379
+      PAYMENT_SUCCESS_RATE: ${PAYMENT_SUCCESS_RATE:-0.80}
+      JAVA_TOOL_OPTIONS: -XX:MaxRAMPercentage=75.0
+    secrets:
+      - database_password
+      - redis_password
+      - jwt_secret
+    ports:
+      - "${APP_PORT:-8080}:8080"
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    read_only: true
+    tmpfs:
+      - /tmp
+    healthcheck:
+      test: ["CMD-SHELL", "wget --no-verbose --tries=1 --spider http://localhost:8080/actuator/health || exit 1"]
+      interval: 15s
+      timeout: 5s
+      retries: 5
+      start_period: 20s
+
+
+volumes:
+  postgres_data:
+  redis_data:
+
+secrets:
+  database_password:
+    environment: POSTGRES_PASSWORD
+  redis_password:
+    environment: REDIS_PASSWORD
+  jwt_secret:
+    environment: JWT_SECRET
